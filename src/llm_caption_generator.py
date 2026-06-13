@@ -10,7 +10,7 @@ from adapter import DEFAULT_EMOTIONS, build_label_dataframe
 
 MODEL_NAME = "Qwen/Qwen3-4B-Instruct-2507"
 MAX_NEW_TOKENS = 96
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 LOG_EVERY_BATCHES = 10
 
 SYSTEM_PROMPT = """

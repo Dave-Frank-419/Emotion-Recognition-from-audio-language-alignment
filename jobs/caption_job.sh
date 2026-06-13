@@ -10,5 +10,6 @@
 direnv allow . && eval "$(direnv export bash)"
 
 export HF_HOME=/data/chi-gpu1/ge96xah/hf_cache
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 python -u src/llm_caption_generator.py

@@ -11,9 +11,11 @@ audio_files/
 *.csv
 
 templates/
+captions/
 captions_llm/
 captions_smoke/
 ckpt/
+*.tar.gz
 *.pth
 *.pth.tar
 slurm-*.out

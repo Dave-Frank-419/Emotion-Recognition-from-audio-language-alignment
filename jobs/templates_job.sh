@@ -6,6 +6,7 @@
 #SBATCH --mem=16G
 #SBATCH --output=./%x_%A.out
 
-direnv allow . && eval "$(direnv export bash)"
+cd /data/chi-gpu1/ge96xah/Emotion-Recognition-from-audio-language-alignment
+source .devenv/state/venv/bin/activate
 
 python -u src/template_creation.py -dataset /nas/student/DavidFrank/MSP-Podcast/converted -features features.csv --dest templates

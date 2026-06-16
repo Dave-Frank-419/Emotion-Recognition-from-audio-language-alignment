@@ -16,13 +16,12 @@ from adapter import DEFAULT_EMOTIONS, audio_root, build_label_dataframe
 
 AUDIO_ENCODER = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
 TEXT_ENCODER = "bert-base-uncased"
-EMBEDDING_DIM = 1024
+EMBEDDING_DIM = 768
 SAMPLE_RATE = 16000
 CLIP_SECONDS = 5
 NUM_EPOCHS = 100
 BATCH_SIZE = 32
 BASE_LR = 1e-3
-ENCODER_LR_FACTOR = 100
 CKPT_DIR = "ckpt"
 
 
@@ -31,7 +30,7 @@ def setup_seed(seed=3407):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-    torch.backends.cudnn.benchmark = True
+    torch.backends.cudnn.deterministic = True
 
 
 class Projection(nn.Module):
@@ -68,8 +67,7 @@ class TextEncoder(nn.Module):
         self.hidden_size = self.base.config.hidden_size
 
     def forward(self, tokens):
-        with torch.no_grad():
-            out = self.base(**tokens).last_hidden_state
+        out = self.base(**tokens).last_hidden_state
         return out[:, 0, :].detach()
 
 
@@ -83,12 +81,14 @@ class CLAP(nn.Module):
         self.text_projection = Projection(self.text_branch.hidden_size, embedding_dim)
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
+        for p in self.audio_branch.parameters():
+            p.requires_grad_(False)
         for p in self.text_branch.parameters():
             p.requires_grad_(False)
 
     def forward(self, wav, tokens):
-        audio = F.normalize(self.audio_projection(self.audio_branch(wav)), dim=-1)
-        text = F.normalize(self.text_projection(self.text_branch(tokens)), dim=-1)
+        audio = self.audio_projection(self.audio_branch(wav))
+        text = self.text_projection(self.text_branch(tokens))
         return audio, text, self.logit_scale.exp()
 
 
@@ -110,7 +110,11 @@ class CaptionDataset(Dataset):
         return len(self.df)
 
     def _load_audio(self, file):
-        wav, sr = torchaudio.load(os.path.join(self.wav_root, file))
+        try:
+            wav, sr = torchaudio.load(os.path.join(self.wav_root, file))
+        except Exception:
+            print(f"audio load failed, using silence: {file}", flush=True)
+            return torch.zeros(self.target_length)
         if sr != SAMPLE_RATE:
             wav = F_audio.resample(wav, orig_freq=sr, new_freq=SAMPLE_RATE)
         wav = wav.mean(0, keepdim=True)
@@ -120,7 +124,6 @@ class CaptionDataset(Dataset):
             wav = wav[:, start:start + self.target_length]
         else:
             wav = F.pad(wav, (0, self.target_length - n))
-        wav = (wav - wav.mean()) / (wav.std() + 1e-7)
         return wav.squeeze(0)
 
     def _load_caption(self, file):
@@ -133,15 +136,8 @@ class CaptionDataset(Dataset):
 
 
 def build_optimizer(model):
-    audio_params = [p for n, p in model.named_parameters()
-                    if n.startswith("audio_branch") and p.requires_grad]
-    head_params = [p for n, p in model.named_parameters()
-                   if not n.startswith("audio_branch")
-                   and not n.startswith("text_branch") and p.requires_grad]
-    return torch.optim.Adam([
-        {"params": audio_params, "lr": BASE_LR / ENCODER_LR_FACTOR},
-        {"params": head_params, "lr": BASE_LR},
-    ], lr=BASE_LR)
+    params = [p for p in model.parameters() if p.requires_grad]
+    return torch.optim.Adam(params, lr=BASE_LR)
 
 
 def train_one_epoch(model, loader, optimizer, tokenizer, device, epoch):
@@ -188,7 +184,7 @@ def main():
     if device == "cuda":
         print(f"gpu: {torch.cuda.get_device_name(0)}")
     print(f"config: epochs={NUM_EPOCHS} batch={BATCH_SIZE} base_lr={BASE_LR} "
-          f"enc_lr_factor={ENCODER_LR_FACTOR} emb={EMBEDDING_DIM} clip_s={CLIP_SECONDS}")
+          f"emb={EMBEDDING_DIM} clip_s={CLIP_SECONDS}")
 
     dataset_root = "/nas/student/DavidFrank/MSP-Podcast"
     caption_dir = "captions_llm"
@@ -231,7 +227,7 @@ def main():
             torch.cuda.reset_peak_memory_stats()
         epoch_start = time.time()
         avg_loss = train_one_epoch(model, loader, optimizer, tokenizer, device, epoch)
-        model.logit_scale.data.clamp_(0, np.log(100))
+        model.logit_scale.data.clamp_(0, 100)
 
         is_best = avg_loss < best_loss
         if is_best:

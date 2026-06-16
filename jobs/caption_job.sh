@@ -7,7 +7,8 @@
 #SBATCH --mem=48G
 #SBATCH --output=./%x_%A.out
 
-direnv allow . && eval "$(direnv export bash)"
+cd /data/chi-gpu1/ge96xah/Emotion-Recognition-from-audio-language-alignment
+source .devenv/state/venv/bin/activate
 
 export HF_HOME=/data/chi-gpu1/ge96xah/hf_cache
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True

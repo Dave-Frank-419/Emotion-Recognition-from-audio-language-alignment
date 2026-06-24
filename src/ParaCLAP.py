@@ -220,6 +220,9 @@ def main():
         start_epoch = ckpt["epoch"] + 1
         best_loss = ckpt["best_loss"]
         print(f"resuming at epoch {start_epoch} (best loss {best_loss:.4f})")
+        del ckpt
+        if device == "cuda":
+            torch.cuda.empty_cache()
 
     run_start = time.time()
     for epoch in range(start_epoch, NUM_EPOCHS + 1):

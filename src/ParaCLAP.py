@@ -164,8 +164,9 @@ def validate_uar(model, tokenizer, device, dataset_root):
     df["file"] = df["file"].apply(os.path.basename)
     df = df.set_index("file")
     candidates = list(df["emotion"].unique())
+    queries = [f"this person is feeling {e}" for e in candidates]
 
-    tokens = tokenizer(candidates, padding=True, truncation=True,
+    tokens = tokenizer(queries, padding=True, truncation=True,
                        return_tensors="pt").to(device)
     loader = DataLoader(ValidationDataset(df, audio_root(dataset_root)),
                         batch_size=1, num_workers=4, pin_memory=True)
@@ -180,6 +181,8 @@ def validate_uar(model, tokenizer, device, dataset_root):
             pred = candidates[int((audio_emb @ text_emb.t()).argmax())]
             counts[emotion[0]] += 1
             hits[emotion[0]] += pred == emotion[0]
+    print(" | ".join(f"{e} {hits[e] / counts[e]:.2f}" for e in candidates if counts[e]),
+          flush=True)
     recalls = [hits[e] / counts[e] for e in candidates if counts[e]]
     return sum(recalls) / len(recalls)
 

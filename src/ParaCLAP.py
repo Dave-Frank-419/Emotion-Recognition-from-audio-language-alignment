@@ -12,7 +12,7 @@ import torchaudio.functional as F_audio
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoModel, AutoTokenizer, Wav2Vec2Model
 
-from adapter import DEFAULT_EMOTIONS, audio_root, build_label_dataframe
+from adapter import DEFAULT_EMOTIONS, audio_root, build_label_dataframe, load_database
 
 AUDIO_ENCODER = "audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim"
 TEXT_ENCODER = "bert-base-uncased"
@@ -22,6 +22,7 @@ CLIP_SECONDS = 5
 NUM_EPOCHS = 100
 BATCH_SIZE = 32
 BASE_LR = 1e-3
+PATIENCE = 5
 CKPT_DIR = "ckpt"
 
 
@@ -135,6 +136,54 @@ class CaptionDataset(Dataset):
         return self._load_audio(file), self._load_caption(file)
 
 
+class ValidationDataset(Dataset):
+
+    def __init__(self, df, wav_root):
+        self.files = list(df.index)
+        self.emotions = list(df["emotion"])
+        self.wav_root = wav_root
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, index):
+        try:
+            wav, sr = torchaudio.load(os.path.join(self.wav_root, self.files[index]))
+        except Exception:
+            print(f"audio load failed, using silence: {self.files[index]}", flush=True)
+            return torch.zeros(CLIP_SECONDS * SAMPLE_RATE), self.emotions[index]
+        if sr != SAMPLE_RATE:
+            wav = F_audio.resample(wav, orig_freq=sr, new_freq=SAMPLE_RATE)
+        return wav.mean(0), self.emotions[index]
+
+
+def validate_uar(model, tokenizer, device, dataset_root):
+    db = load_database(dataset_root)
+    df = db["categories.consensus.validation"].df
+    df = df.reset_index()
+    df["file"] = df["file"].apply(os.path.basename)
+    df = df.set_index("file")
+    candidates = list(df["emotion"].unique())
+
+    tokens = tokenizer(candidates, padding=True, truncation=True,
+                       return_tensors="pt").to(device)
+    loader = DataLoader(ValidationDataset(df, audio_root(dataset_root)),
+                        batch_size=1, num_workers=4, pin_memory=True)
+
+    model.eval()
+    hits = {e: 0 for e in candidates}
+    counts = {e: 0 for e in candidates}
+    with torch.no_grad():
+        text_emb = F.normalize(model.text_projection(model.text_branch(tokens)), dim=-1)
+        for wav, emotion in loader:
+            audio_emb = F.normalize(model.audio_projection(model.audio_branch(wav.to(device))), dim=-1)
+            pred = candidates[int((audio_emb @ text_emb.t()).argmax())]
+            counts[emotion[0]] += 1
+            hits[emotion[0]] += pred == emotion[0]
+    recalls = [hits[e] / counts[e] for e in candidates if counts[e]]
+    return sum(recalls) / len(recalls)
+
+
 def build_optimizer(model):
     params = [p for p in model.parameters() if p.requires_grad]
     return torch.optim.Adam(params, lr=BASE_LR)
@@ -167,12 +216,12 @@ def train_one_epoch(model, loader, optimizer, tokenizer, device, epoch):
     return total_loss / max(steps, 1)
 
 
-def save_ckpt(path, model, optimizer, epoch, best_loss):
+def save_ckpt(path, model, optimizer, epoch, best_uar):
     torch.save({
         "model": model.state_dict(),
         "optimizer": optimizer.state_dict(),
         "epoch": epoch,
-        "best_loss": best_loss,
+        "best_uar": best_uar,
     }, path + ".tmp")
     os.replace(path + ".tmp", path)
 
@@ -212,33 +261,42 @@ def main():
     last_path = os.path.join(CKPT_DIR, "last.pth.tar")
     best_path = os.path.join(CKPT_DIR, "best.pth.tar")
 
-    start_epoch, best_loss = 1, float("inf")
+    start_epoch, best_uar = 1, 0.0
     if os.path.exists(last_path):
         ckpt = torch.load(last_path, map_location=device)
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
         start_epoch = ckpt["epoch"] + 1
-        best_loss = ckpt["best_loss"]
-        print(f"resuming at epoch {start_epoch} (best loss {best_loss:.4f})")
+        best_uar = ckpt.get("best_uar", 0.0)
+        print(f"resuming at epoch {start_epoch}")
         del ckpt
         if device == "cuda":
             torch.cuda.empty_cache()
 
+    uar = validate_uar(model, tokenizer, device, dataset_root)
+    best_uar = max(best_uar, uar)
+    print(f"initial UAR {uar:.4f}", flush=True)
+
     run_start = time.time()
+    no_improve = 0
     for epoch in range(start_epoch, NUM_EPOCHS + 1):
         if device == "cuda":
             torch.cuda.reset_peak_memory_stats()
         epoch_start = time.time()
         avg_loss = train_one_epoch(model, loader, optimizer, tokenizer, device, epoch)
         model.logit_scale.data.clamp_(0, 100)
+        uar = validate_uar(model, tokenizer, device, dataset_root)
 
-        is_best = avg_loss < best_loss
+        is_best = uar > best_uar
         if is_best:
-            best_loss = avg_loss
-        save_ckpt(last_path, model, optimizer, epoch, best_loss)
+            best_uar = uar
+            no_improve = 0
+        else:
+            no_improve += 1
+        save_ckpt(last_path, model, optimizer, epoch, best_uar)
         if is_best:
-            save_ckpt(best_path, model, optimizer, epoch, best_loss)
-            print(f"[{epoch}] new best (loss={best_loss:.4f})", flush=True)
+            save_ckpt(best_path, model, optimizer, epoch, best_uar)
+            print(f"[{epoch}] new best (UAR={best_uar:.4f})", flush=True)
 
         epoch_min = (time.time() - epoch_start) / 60
         sps = len(loader.dataset) / max(time.time() - epoch_start, 1e-9)
@@ -247,8 +305,13 @@ def main():
         scale = model.logit_scale.exp().item()
         mem = torch.cuda.max_memory_allocated() / 1e9 if device == "cuda" else 0.0
         print(f"[{time.strftime('%H:%M:%S')}][{epoch}/{NUM_EPOCHS}] "
-              f"avg loss {avg_loss:.4f} | scale {scale:.2f} | {sps:.1f} samp/s | "
-              f"peak {mem:.2f}GB | {epoch_min:.1f} min | eta {eta_h:.1f}h", flush=True)
+              f"avg loss {avg_loss:.4f} | UAR {uar:.4f} | scale {scale:.2f} | "
+              f"{sps:.1f} samp/s | peak {mem:.2f}GB | {epoch_min:.1f} min | "
+              f"eta {eta_h:.1f}h", flush=True)
+
+        if no_improve >= PATIENCE:
+            print(f"early stop: no UAR improvement for {PATIENCE} epochs", flush=True)
+            break
 
 
 if __name__ == "__main__":

@@ -12,4 +12,4 @@ source .devenv/state/venv/bin/activate
 
 export HF_HOME=/data/chi-gpu1/ge96xah/hf_cache
 
-python -u src/eval_dev.py
+python -u src/eval_msp.py

@@ -40,13 +40,13 @@ class Projection(nn.Module):
         super().__init__()
         self.linear1 = nn.Linear(d_in, d_out, bias=False)
         self.linear2 = nn.Linear(d_out, d_out, bias=False)
-        self.norm = nn.LayerNorm(d_out)
+        self.layer_norm = nn.LayerNorm(d_out)
         self.drop = nn.Dropout(p)
 
     def forward(self, x):
         h = self.linear1(x)
         h = h + self.drop(self.linear2(F.gelu(h)))
-        return self.norm(h)
+        return self.layer_norm(h)
 
 
 class SpeechEncoder(nn.Module):

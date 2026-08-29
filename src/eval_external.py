@@ -11,8 +11,9 @@ import yaml
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
-from ParaCLAP import AUDIO_ENCODER, CKPT_DIR, CLAP, EMBEDDING_DIM, SAMPLE_RATE, TEXT_ENCODER
+from ParaCLAP import AUDIO_ENCODER, CLAP, EMBEDDING_DIM, SAMPLE_RATE, TEXT_ENCODER
 
+CKPT_PATH = os.path.join("ckpt", "best.pth.tar")
 RESULTS_DIR = "results"
 SENTENCE_TEMPLATE = "this person is feeling {}"
 USE_LIBROSA = True
@@ -111,7 +112,7 @@ def evaluate_zero_shot(name, wav_root, manifest, model, tokenizer, device,
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"device: {device}")
-    model = load_model(os.path.join(CKPT_DIR, "best.pth.tar"), device)
+    model = load_model(CKPT_PATH, device)
     tokenizer = AutoTokenizer.from_pretrained(TEXT_ENCODER)
     for name, cfg in DATASETS.items():
         if not (os.path.exists(cfg["wav_root"]) and os.path.exists(cfg["manifest"])):

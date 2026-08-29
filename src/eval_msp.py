@@ -11,8 +11,9 @@ import yaml
 from torch.utils.data import DataLoader, Dataset
 from transformers import AutoTokenizer
 
-from ParaCLAP import AUDIO_ENCODER, CKPT_DIR, CLAP, EMBEDDING_DIM, SAMPLE_RATE, TEXT_ENCODER
+from ParaCLAP import AUDIO_ENCODER, CLAP, EMBEDDING_DIM, SAMPLE_RATE, TEXT_ENCODER
 
+CKPT_PATH = os.path.join("ckpt", "best.pth.tar")
 RESULTS_DIR = "results"
 
 
@@ -109,5 +110,5 @@ def evaluate_msp(dataset_root, ckpt_path):
 if __name__ == "__main__":
     evaluate_msp(
         dataset_root="/nas/student/DavidFrank/MSP-Podcast",
-        ckpt_path=os.path.join(CKPT_DIR, "best.pth.tar"),
+        ckpt_path=CKPT_PATH,
     )

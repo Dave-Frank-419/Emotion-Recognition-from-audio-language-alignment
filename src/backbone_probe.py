@@ -12,7 +12,7 @@ from ParaCLAP import AUDIO_ENCODER, CLAP, EMBEDDING_DIM, TEXT_ENCODER
 
 CKPT_PATH = os.path.join("ckpt", "best.pth.tar")
 HANDOVER_PATH = "/nas/student/DavidFrank/handover/paraclap_llm_best_ep59.pth.tar"
-NAS_ROOT = "/nas/student/DavidFrank"
+NAS_ROOT = "/nas/student/DavidFrank/handover"
 MANIFEST = os.path.join("manifests", "ravdess.csv")
 WAV_ROOT = "/data/chi-gpu1/ge96xah/data/RAVDESS"
 

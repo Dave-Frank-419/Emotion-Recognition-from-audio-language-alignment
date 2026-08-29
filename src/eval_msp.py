@@ -49,6 +49,7 @@ def evaluate_msp(dataset_root, ckpt_path):
     queries = {
         "word": candidates,
         "sentence": [f"this person is feeling {e}" for e in candidates],
+        "anchor": [f"The speaker is feeling {e}." for e in candidates],
     }
 
     model = CLAP(AUDIO_ENCODER, TEXT_ENCODER, EMBEDDING_DIM)
@@ -98,9 +99,9 @@ def evaluate_msp(dataset_root, ckpt_path):
     os.makedirs(RESULTS_DIR, exist_ok=True)
     with open(os.path.join(RESULTS_DIR, "results.msp.zsl.yaml"), "w") as fp:
         yaml.dump(all_results, fp)
-    pd.DataFrame({"prediction_word": predictions["word"],
-                  "prediction_sentence": predictions["sentence"],
-                  "emotion": targets}, index=df_test.index) \
+    columns = {f"prediction_{style}": predictions[style] for style in queries}
+    columns["emotion"] = targets
+    pd.DataFrame(columns, index=df_test.index) \
         .reset_index().to_csv(os.path.join(RESULTS_DIR, "results.msp.zsl.csv"), index=False)
     return all_results
 

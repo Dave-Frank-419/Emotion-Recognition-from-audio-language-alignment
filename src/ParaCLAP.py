@@ -23,7 +23,7 @@ NUM_EPOCHS = 100
 BATCH_SIZE = 32
 BASE_LR = 1e-3
 PATIENCE = 5
-CKPT_DIR = "ckpt"
+CKPT_DIR = "ckpt_anchor"
 
 
 def setup_seed(seed=3407):
@@ -164,7 +164,7 @@ def validate_uar(model, tokenizer, device, dataset_root):
     df["file"] = df["file"].apply(os.path.basename)
     df = df.set_index("file")
     candidates = list(df["emotion"].unique())
-    queries = [f"this person is feeling {e}" for e in candidates]
+    queries = [f"The speaker is feeling {e}." for e in candidates]
 
     tokens = tokenizer(queries, padding=True, truncation=True,
                        return_tensors="pt").to(device)
@@ -239,7 +239,7 @@ def main():
           f"emb={EMBEDDING_DIM} clip_s={CLIP_SECONDS}")
 
     dataset_root = "/nas/student/DavidFrank/MSP-Podcast"
-    caption_dir = "captions_llm"
+    caption_dir = "captions_llm_anchor"
 
     df = build_label_dataframe(dataset_root, split="train", emotions=DEFAULT_EMOTIONS)
     n_total = len(df)

@@ -29,12 +29,17 @@ Feature Logic:
     - Jitter (high / normal / low): high is trembling/unstable (stress, crying); low is steady.
     - Shimmer (high / normal / low): high is rough/breathy/unstable; low is clean/resonant.
 
+Anchor Rule:
+    - The caption MUST BEGIN with this exact sentence, verbatim:
+      "The speaker is feeling <EMOTION>." (insert the provided emotion label)
+    - Continue with 1-2 vivid sentences that must NOT repeat the emotion word.
+
 Constraints:
     1. NEVER mention numbers, statistics, or "quantile".
     2. DO NOT list the input phrases mechanically; rewrite them as flowing prose.
     3. FUSE features into a cinematic description capturing physical sound and psychological state.
-    4. Seamlessly weave provided Emotion/Gender labels.
-    5. Strictly under 40 words.
+    4. Seamlessly weave the provided Gender label into the continuation.
+    5. Strictly under 40 words in total.
 
 Output Rule
     - Output ONLY the final caption. No conversational filler.
@@ -48,8 +53,8 @@ INPUT: {"file_id": "VOICE_001.wav",
         ["has a low pitch", "has a low pitch variation", "is almost silent", "is of average length",
         "has a high jitter", "has a high shimmer", "emotion is sadness", "a female is speaking"]}
 
-OUTPUT: The woman's voice is a heavy, somber murmur, characterized by a slow, hesitant pace and a fragile, breathy
-        instability that betrays her profound sadness.
+OUTPUT: The speaker is feeling sadness. The woman's voice is a heavy, somber murmur, its slow, hesitant
+        pace and fragile, breathy instability betraying the weight she carries.
 """
 
 
@@ -154,8 +159,8 @@ def generate_captions(dataset_root, template_dir, cache_dir, split="train",
     for i in range(0, len(todo), batch_size):
         batch = todo[i:i + batch_size]
         captions = captioner.caption_batch(batch)
-        for (file, *_), caption in zip(batch, captions):
-            if not caption:
+        for (file, emotion, *_), caption in zip(batch, captions):
+            if not caption.startswith(f"The speaker is feeling {emotion}."):
                 empty += 1
                 continue
             with open(os.path.join(cache_dir, f"{file}.json"), "w",
@@ -176,7 +181,7 @@ if __name__ == "__main__":
     generate_captions(
         dataset_root,
         template_dir="templates",
-        cache_dir="captions_llm",
+        cache_dir="captions_llm_anchor",
         split="train",
         emotions=DEFAULT_EMOTIONS,
         limit=None,

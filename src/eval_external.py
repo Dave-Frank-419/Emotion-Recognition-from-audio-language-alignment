@@ -1,6 +1,7 @@
 import os
 
 import audmetric
+import librosa
 import pandas as pd
 import torch
 import torch.nn.functional as F
@@ -14,6 +15,7 @@ from ParaCLAP import AUDIO_ENCODER, CKPT_DIR, CLAP, EMBEDDING_DIM, SAMPLE_RATE, 
 
 RESULTS_DIR = "results"
 SENTENCE_TEMPLATE = "this person is feeling {}"
+USE_LIBROSA = True
 
 DATASETS = {
     "ravdess": {"wav_root": "/data/chi-gpu1/ge96xah/data/RAVDESS", "manifest": "manifests/ravdess.csv"},
@@ -32,8 +34,12 @@ class ManifestDataset(Dataset):
         return len(self.files)
 
     def __getitem__(self, index):
+        path = os.path.join(self.wav_root, self.files[index])
         try:
-            wav, sr = torchaudio.load(os.path.join(self.wav_root, self.files[index]))
+            if USE_LIBROSA:
+                wav, _ = librosa.load(path, sr=SAMPLE_RATE)
+                return torch.from_numpy(wav), self.labels[index]
+            wav, sr = torchaudio.load(path)
         except Exception:
             print(f"audio load failed, using silence: {self.files[index]}", flush=True)
             return torch.zeros(SAMPLE_RATE), self.labels[index]
@@ -59,6 +65,7 @@ def evaluate_zero_shot(name, wav_root, manifest, model, tokenizer, device,
     queries = {
         "word": candidates,
         "sentence": [sentence_template.format(c) for c in candidates],
+        "anchor": [f"The speaker is feeling {c}." for c in candidates],
     }
     text_embs = {}
     with torch.no_grad():

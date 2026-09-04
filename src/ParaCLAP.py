@@ -23,6 +23,7 @@ NUM_EPOCHS = 100
 BATCH_SIZE = 32
 BASE_LR = 1e-3
 PATIENCE = 5
+MIN_EPOCHS = 50
 CKPT_DIR = "ckpt_anchor"
 
 
@@ -312,7 +313,7 @@ def main():
               f"{sps:.1f} samp/s | peak {mem:.2f}GB | {epoch_min:.1f} min | "
               f"eta {eta_h:.1f}h", flush=True)
 
-        if no_improve >= PATIENCE:
+        if epoch >= MIN_EPOCHS and no_improve >= PATIENCE:
             print(f"early stop: no UAR improvement for {PATIENCE} epochs", flush=True)
             break
 

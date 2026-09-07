@@ -13,10 +13,10 @@ from transformers import AutoTokenizer
 
 from ParaCLAP import AUDIO_ENCODER, CLAP, EMBEDDING_DIM, SAMPLE_RATE, TEXT_ENCODER
 
-CKPT_PATH = os.path.join("ckpt", "best.pth.tar")
+CKPT_PATH = os.path.join("ckpt_anchor", "best.pth.tar")
 RESULTS_DIR = "results"
 SENTENCE_TEMPLATE = "this person is feeling {}"
-USE_LIBROSA = True
+USE_LIBROSA = False
 
 DATASETS = {
     "ravdess": {"wav_root": "/data/chi-gpu1/ge96xah/data/RAVDESS", "manifest": "manifests/ravdess.csv"},
